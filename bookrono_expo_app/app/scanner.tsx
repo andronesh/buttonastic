@@ -4,14 +4,74 @@ import {
 	useCameraPermissions,
 } from "expo-camera";
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Button, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+	Alert,
+	Button,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
+} from "react-native";
+
+type AuthorGrDto = {
+	id: number;
+	name: string;
+	profileUrl: string;
+};
+
+type BookGrDto = {
+	bookId: string;
+	workId: string;
+	title: string;
+	author: AuthorGrDto;
+	imageUrl: string;
+	numPages: number;
+
+	bookTitleBare: string;
+	bookUrl: string;
+	avgRating: string;
+};
 
 export default function ScannerScreen() {
 	const router = useRouter();
 	const [zoom, setZoom] = useState(0);
 	const [permission, requestPermission] = useCameraPermissions();
 	const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
+	const [isBookInfoLoading, setIsBookInfoLoading] = useState(false);
+	const [bookInfo, setBookInfo] = useState<any>(null);
+
+	useEffect(() => {
+		if (scannedBarcode) {
+			if (!Number.isNaN(Number(scannedBarcode))) {
+				setIsBookInfoLoading(true);
+				fetchBookInfoByIsbn(scannedBarcode);
+			} else {
+				Alert.alert("Scanned barcode is not a number", scannedBarcode);
+			}
+		}
+	}, [scannedBarcode]);
+
+	async function fetchBookInfoByIsbn(isbn: string) {
+		try {
+			const apiUrl = `https://www.goodreads.com/book/auto_complete?format=json&q=${isbn}`;
+			const books: BookGrDto[] = await fetch(apiUrl).then((response) =>
+				response.json(),
+			);
+			console.info("Fetched book info:");
+			console.info(books);
+			if (books.length > 0) {
+				setBookInfo(books[0]);
+			} else {
+				Alert.alert("No book info found for ISBN", isbn);
+			}
+		} catch (error) {
+			console.error("Error fetching book info:", error);
+			Alert.alert("Failed to fetch book info", JSON.stringify(error));
+		} finally {
+			setIsBookInfoLoading(false);
+		}
+	}
 
 	if (!permission) {
 		// Camera permissions are still loading. TODO show loading state
@@ -31,11 +91,7 @@ export default function ScannerScreen() {
 	}
 
 	function handleBarCodeScanned(scanningResult: BarcodeScanningResult) {
-		const { type, data } = scanningResult;
-		setScannedBarcode(data);
-		console.info(
-			`Bar code with type ${type} and data ${data} has been scanned!`,
-		);
+		setScannedBarcode(scanningResult.data);
 	}
 
 	return (
@@ -45,6 +101,11 @@ export default function ScannerScreen() {
 				zoom={zoom}
 				onBarcodeScanned={handleBarCodeScanned}
 			/>
+			{bookInfo && (
+				<View style={styles.bookInfoContainer}>
+					<Text style={styles.text}>{bookInfo.title}</Text>
+				</View>
+			)}
 			<View style={styles.barcodeContainer}>
 				<TouchableOpacity
 					style={styles.button}
@@ -90,21 +151,36 @@ const styles = StyleSheet.create({
 	camera: {
 		flex: 1,
 	},
+	bookInfoContainer: {
+		position: "absolute",
+		bottom: 200,
+		flexDirection: "row",
+		backgroundColor: "blue",
+		borderRadius: 8,
+		width: "88%",
+		marginHorizontal: "6%",
+		paddingHorizontal: 64,
+		paddingVertical: 22,
+	},
 	barcodeContainer: {
 		position: "absolute",
-		bottom: 164,
+		bottom: 123,
 		flexDirection: "row",
 		backgroundColor: "red",
-		width: "100%",
+		width: "88%",
+		marginHorizontal: "6%",
 		paddingHorizontal: 64,
+		paddingVertical: 12,
 	},
 	buttonContainer: {
 		position: "absolute",
 		bottom: 64,
 		flexDirection: "row",
 		backgroundColor: "red",
-		width: "100%",
+		width: "88%",
+		marginHorizontal: "6%",
 		paddingHorizontal: 64,
+		paddingVertical: 12,
 	},
 	button: {
 		flex: 1,
