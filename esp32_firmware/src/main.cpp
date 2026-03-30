@@ -1,9 +1,85 @@
 #include <Arduino.h>
 #include "Button.h"
+#include <NimBLEDevice.h>
 
 const int GREEN_LED_PIN = 2;
 const int YELLOW_LED_PIN = 3;
 const int RED_LED_PIN = 4;
+
+const char* SERVICE_UUID        = "00000000-1111-2222-3333-123456789abc";
+const char* COMMAND_CHAR_UUID   = "cccccccc-1111-2222-3333-123456789abc";
+const char* EVENT_CHAR_UUID     = "eeeeeeee-1111-2222-3333-123456789abc";
+
+NimBLEService* bleService;
+NimBLECharacteristic* commandChar;
+NimBLECharacteristic* eventChar;
+
+bool bleServiceRunning = false;
+bool bleServiceAdvertising = false;
+bool deviceConnected = false;
+
+class ServerCallbacks : public NimBLEServerCallbacks {
+
+  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
+    deviceConnected = true;
+    Serial.println("Client connected");
+  }
+
+  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override{
+    deviceConnected = false;
+    Serial.println("Client disconnected");
+
+    NimBLEDevice::startAdvertising();
+  }
+};
+
+class CommandCallbacks : public NimBLECharacteristicCallbacks {
+
+  void onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) override {
+
+    std::string value = pCharacteristic->getValue();
+
+    if(value.length() == 0) return;
+
+    Serial.print("Received command: ");
+    Serial.println(value.c_str());
+  }
+};
+
+void initBLE() {
+  NimBLEDevice::init("BOOKRONO");
+
+  NimBLEServer* server = NimBLEDevice::createServer();
+  server->setCallbacks(new ServerCallbacks());
+
+  bleService = server->createService(SERVICE_UUID);
+
+  commandChar = bleService->createCharacteristic(
+        COMMAND_CHAR_UUID,
+        NIMBLE_PROPERTY::WRITE |
+        NIMBLE_PROPERTY::WRITE_NR
+  );
+
+  eventChar = bleService->createCharacteristic(
+        EVENT_CHAR_UUID,
+        NIMBLE_PROPERTY::NOTIFY
+  );
+
+  commandChar->setCallbacks(new CommandCallbacks());
+
+  Serial.println("BLE ready");
+}
+
+void startAdvertising() {
+    NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+    advertising->addServiceUUID(SERVICE_UUID);
+//   advertising->setScanResponse(false);
+//   advertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
+//   advertising->setMinPreferred(0x12);
+    advertising->start();
+    bleServiceAdvertising = true;
+    Serial.println("Started advertising");
+}
 
 static void onButtonPressDownCb(void *button_handle, void *usr_data) {
     digitalWrite(GREEN_LED_PIN, HIGH);
@@ -26,6 +102,7 @@ static void onButtonDoubleClickCb(void *button_handle, void *usr_data) {
     digitalWrite(YELLOW_LED_PIN, HIGH);
     digitalWrite(RED_LED_PIN, LOW);
     Serial.println(">>> double click");
+    startAdvertising();
 }
 
 static void onButtonLongPressStartCb(void *button_handle, void *usr_data) {
@@ -64,6 +141,8 @@ void setup() {
     btn->attachLongPressUpEventCb(&onButtonLongPressUpCb, NULL);
     btn->attachMultipleClickEventCb(&onButtonMultipleClickCb, 3, NULL);
 
+    initBLE();
+
     // btn->setParam(button_param_t param, void *value);
     //     BUTTON_LONG_PRESS_TIME_MS = 0,
     //     BUTTON_SHORT_PRESS_TIME_MS,
@@ -71,5 +150,7 @@ void setup() {
 }
 
 void loop() {
-
+    delay(1000);
+    Serial.printf("   BLE advertising %s\n", NimBLEDevice::getAdvertising()->isAdvertising() ? "true" : "false");
+    Serial.printf("   device connected %s\n\n", deviceConnected ? "true" : "false");
 }
