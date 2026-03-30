@@ -41,7 +41,7 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
 
     if(value.length() == 0) return;
 
-    Serial.print("Received command: ");
+    Serial.print("=> Received: ");
     Serial.println(value.c_str());
   }
 };
@@ -81,6 +81,16 @@ void startAdvertising() {
     Serial.println("Started advertising");
 }
 
+void sendEvent(String event) {
+  if(!deviceConnected) {
+    Serial.println("No client connected, cannot send event");
+    return;
+  };
+
+  eventChar->setValue(event.c_str());
+  eventChar->notify();
+}
+
 static void onButtonPressDownCb(void *button_handle, void *usr_data) {
     digitalWrite(GREEN_LED_PIN, HIGH);
     digitalWrite(YELLOW_LED_PIN, LOW);
@@ -95,6 +105,7 @@ static void onButtonPressUpCb(void *button_handle, void *usr_data) {
 
 static void onButtonSingleClickCb(void *button_handle, void *usr_data) {
     Serial.println("--- single click");
+    sendEvent("single click");
 }
 
 static void onButtonDoubleClickCb(void *button_handle, void *usr_data) {
@@ -102,13 +113,17 @@ static void onButtonDoubleClickCb(void *button_handle, void *usr_data) {
     digitalWrite(YELLOW_LED_PIN, HIGH);
     digitalWrite(RED_LED_PIN, LOW);
     Serial.println(">>> double click");
-    startAdvertising();
+    sendEvent("double click");
+    if (!deviceConnected && !NimBLEDevice::getAdvertising()->isAdvertising()) {
+        startAdvertising();
+    }
 }
 
 static void onButtonLongPressStartCb(void *button_handle, void *usr_data) {
     digitalWrite(YELLOW_LED_PIN, HIGH);
     digitalWrite(RED_LED_PIN, HIGH);
     Serial.println("+   long press start");
+    sendEvent("long press");
 }
 
 static void onButtonLongPressUpCb(void *button_handle, void *usr_data) {
@@ -122,6 +137,7 @@ static void onButtonMultipleClickCb(void *button_handle, void *usr_data) {
     digitalWrite(YELLOW_LED_PIN, LOW);
     digitalWrite(RED_LED_PIN, HIGH);
     Serial.println("!!! multiple click");
+    sendEvent("triple click");
 }
 
 void setup() {

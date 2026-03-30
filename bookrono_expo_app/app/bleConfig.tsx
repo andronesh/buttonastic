@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
 	Button,
 	FlatList,
@@ -9,10 +9,11 @@ import {
 	TextInput,
 	View,
 } from "react-native";
-import { BleManager, Device } from "react-native-ble-plx";
+import { BleManager, Characteristic, Device } from "react-native-ble-plx";
 
 const SERVICE_UUID = "00000000-1111-2222-3333-123456789abc";
 const COMMAND_UUID = "cccccccc-1111-2222-3333-123456789abc";
+const EVENT_UUID = "eeeeeeee-1111-2222-3333-123456789abc";
 
 const manager = new BleManager();
 
@@ -78,7 +79,7 @@ const requestBluetoothPermissions = async (): Promise<boolean> => {
 // Usage:
 
 export default function BLEConfigScreen() {
-	const [device, setDevice] = useState<Device | null>(null);
+	const deviceRef = useRef<Device | null>(null);
 	const [logs, setLogs] = useState<string[]>([]);
 	const [message, setMessage] = useState<string>("");
 
@@ -120,28 +121,60 @@ export default function BLEConfigScreen() {
 
 			await connected.discoverAllServicesAndCharacteristics();
 
-			setDevice(connected);
+			deviceRef.current = connected;
+
+			subscribeToEvents(connected);
 		} catch (e: any) {
 			log("Connection error: " + e.message);
 		}
 	};
 
+	const subscribeToEvents = (dev: Device) => {
+		dev.monitorCharacteristicForService(
+			SERVICE_UUID,
+			EVENT_UUID,
+			(error: Error | null, char: Characteristic | null) => {
+				if (error) {
+					log("Monitor error: " + error.message);
+					return;
+				}
+
+				if (!char?.value) return;
+
+				const decoded = Buffer.from(char.value, "base64").toString();
+
+				log("Received: " + decoded);
+				deliverPayload("ACK: " + decoded);
+			},
+		);
+	};
+
 	const sendMessage = async () => {
-		if (!device) {
+		try {
+			await deliverPayload(message);
+			setMessage("");
+		} catch (e: any) {
+			log("Send error: " + e.message);
+		}
+	};
+
+	const deliverPayload = async (payload: string) => {
+		const currentDevice = deviceRef.current;
+		if (!currentDevice) {
 			log("No device connected");
 			return;
 		}
 
-		const base64 = Buffer.from(message).toString("base64");
+		const base64 = Buffer.from(payload).toString("base64");
 
 		try {
-			await device.writeCharacteristicWithResponseForService(
+			await currentDevice.writeCharacteristicWithResponseForService(
 				SERVICE_UUID,
 				COMMAND_UUID,
 				base64,
 			);
 
-			log("Sent: " + message);
+			log("Sent: " + payload);
 			setMessage("");
 		} catch (e: any) {
 			log("Send error: " + e.message);
